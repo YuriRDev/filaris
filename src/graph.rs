@@ -1,8 +1,5 @@
-#[derive(Debug)]
-struct UrlData {
-    pub point_to: Vec<usize>,
-    pub url: String,
-}
+use crate::UrlData;
+mod urldata;
 
 #[derive(Debug)]
 struct Graph {
