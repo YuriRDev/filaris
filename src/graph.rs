@@ -1,8 +1,7 @@
 use crate::UrlData;
-mod urldata;
 
 #[derive(Debug)]
-struct Graph {
+pub struct Graph {
     pub urls: Vec<UrlData>,
 }
 

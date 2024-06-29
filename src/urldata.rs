@@ -1,7 +1,18 @@
+use regex::Regex;
+
 #[derive(Debug)]
-struct UrlData {
+pub struct UrlData {
     pub point_to: Vec<usize>,
     pub url: String,
+}
+
+impl UrlData{
+    pub fn new(url: String) -> UrlData {
+        UrlData {
+            point_to: Vec::new(),
+            url,
+        }
+    }
 }
 
 pub fn normalize_url(url: String) -> String {
@@ -26,8 +37,48 @@ pub fn normalize_url(url: String) -> String {
     normalized
 }
 
+pub fn validate_url(url: &str, parent_url: &str) -> Option<String> {
+    let re = Regex::new(r"^(https?://|www\.|/)[^\s]*$").unwrap();
+    if re.is_match(url) {
+        if parent_url.starts_with('/') {
+            return Some(format!("{}{}", parent_url, url))
+        } 
+        return Some(url.to_string())
+    }
+    None
+}
+
 #[cfg(test)]
-mod tests {
+mod validate_url{
+    use crate::urldata::validate_url;
+
+    #[test]
+    fn invalid_urls() {
+        assert_eq!(validate_url("https://my_ url.com", ""), None);
+        assert_eq!(validate_url("htts://invalid.co", ""), None);
+        assert_eq!(validate_url("obiously", ""), None);
+        assert_eq!(validate_url("ftp::asd", ""), None);
+    }
+    
+    #[test]
+    fn valid_urls() {
+        assert_eq!(validate_url("https://site.com", ""), Some("https://site.com".to_string()));
+        assert_eq!(validate_url("https://site", ""), Some("https://site".to_string()));
+        assert_eq!(validate_url("http://site.com", ""), Some("http://site.com".to_string()));
+        assert_eq!(validate_url("www.site.com", ""), Some("www.site.com".to_string()));
+        assert_eq!(validate_url("/valid_path", ""), Some("/valid_path".to_string()));
+        assert_eq!(validate_url("/valid_path/again", ""), Some("/valid_path/again".to_string()));
+    }
+    
+    #[test]
+    fn concat_relative_path() {
+        assert_eq!(validate_url("https://site.com", "https://site.com"), Some("https://site.com".to_string()));
+        assert_eq!(validate_url("/path1", "https://site.com"), Some("https://site.com/path1".to_string()));
+        assert_eq!(validate_url("/path1/path2", "www.site.com"), Some("https://site.com/path1/path2".to_string()));
+    }
+}
+#[cfg(test)]
+mod normalize_url {
     use super::*;
 
     #[test]
