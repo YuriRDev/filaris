@@ -85,17 +85,6 @@ pub fn extract_strings_from_html(text: &str, same_domain: bool, domain: &str) ->
 
     for cap in re.captures_iter(text) {
         if is_valid_url(&cap[1]) {
-            // TO-DO: Abstract this later
-            if cap[1].ends_with(".png")
-                || cap[1].ends_with(".gif")
-                || cap[1].ends_with(".jpeg")
-                || cap[1].ends_with(".webp")
-                || cap[1].ends_with(".svg")
-                || cap[1].ends_with(".css")
-            {
-                continue;
-            }
-
             if same_domain {
                 if is_same_domain(&cap[1], domain) {
                     substrings.push(cap[1].to_string());
