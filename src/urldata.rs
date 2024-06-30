@@ -3,7 +3,7 @@ use regex::Regex;
 /// Some files are not important for us, such as images, stylesheet, etc...
 /// All the following filetypes will be ignored when searching for a URL.
 /// When this constant changes, don't forget to also change the test bellow. 
-const IGNORE_FILETYPE: [&str; 6] = [".png", ".gif", ".jpeg", ".webp", ".svg", ".css"];
+const IGNORE_FILETYPE: [&str; 7] = [".png", ".gif", ".jpeg", ".webp", ".svg", ".css", ".ico"];
 
 #[derive(Debug)]
 pub struct UrlData {
@@ -49,6 +49,10 @@ pub fn validate_url(url: &str, parent_url: &str) -> Option<String> {
             if url.ends_with(filetype) {
                 return None
             }
+        }
+
+        if url.contains("/#") {
+            return None
         }
 
         if url.starts_with('/') {
