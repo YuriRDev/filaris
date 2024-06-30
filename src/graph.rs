@@ -1,4 +1,4 @@
-use crate::UrlData;
+use crate::urldata::UrlData;
 
 #[derive(Debug)]
 pub struct Graph {
