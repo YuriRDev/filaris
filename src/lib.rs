@@ -52,13 +52,22 @@ impl Analiser {
         })
     }
 
-    fn already_exists(&self, url: &str) -> bool {
+    fn already_scanned(&self, url: &str) -> bool {
         for scanned_urls in &self.graph.urls {
             if normalize_url(scanned_urls.url.clone()) == normalize_url(url.to_string()) {
                 return true
             }
         }
         return false
+    }
+
+    fn in_queue(&self, url: &str) -> bool {
+        for queue_urls in &self.queue {
+            if normalize_url(queue_urls.url.clone()) == normalize_url(url.to_string()) {
+                return true;
+            }
+        }
+        false
     }
 
     pub async fn start(&mut self) {
@@ -70,7 +79,9 @@ impl Analiser {
                         println!("[{}] {} ----> {}", href_url.len(), &url.parent, &url.url);
                         self.graph.add(UrlData::new(url.url.to_string()), &url.parent);
                         for new_url in href_url {
-                            if !&self.already_exists(&new_url) {
+                            if self.already_scanned(&new_url) {
+                                self.graph.add(UrlData::new(url.url.to_string()), &url.parent);
+                            } else if !self.in_queue(&new_url) {
                                 self.add_to_queue(&new_url, url.depth + 1, url.url.to_string())
                             }
                         }
@@ -88,6 +99,7 @@ pub async fn analise_page(url: &str) -> Option<Vec<String>> {
     let req_result = reqwest::get(url).await;
     match req_result {
         Err(e) => {
+            println!("{:?}", e);
             return None;
         }
         Ok(content) => match content.text().await {
