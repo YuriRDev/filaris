@@ -1,9 +1,10 @@
 use regex::Regex;
+use reqwest::get;
 
 /// Some files are not important for us, such as images, stylesheet, etc...
 /// All the following filetypes will be ignored when searching for a URL.
 /// When this constant changes, don't forget to also change the test bellow. 
-const IGNORE_FILETYPE: [&str; 7] = [".png", ".gif", ".jpeg", ".webp", ".svg", ".css", ".ico", ".jpg"];
+const IGNORE_FILETYPE: [&str; 8] = [".png", ".gif", ".jpeg", ".webp", ".svg", ".css", ".ico", ".jpg"];
 
 #[derive(Debug)]
 pub struct UrlData {
@@ -56,12 +57,35 @@ pub fn validate_url(url: &str, parent_url: &str) -> Option<String> {
         }
 
         if url.starts_with('/') {
-            return Some(format!("{}{}", parent_url, url));
+            return Some(format!("{}{}", get_base_url(parent_url), url));
         }
 
         return Some(url.to_string());
     }
     None
+}
+
+/// site.com/anypath -> site.com
+/// site.com/path1/path2 -> site.com
+pub fn get_base_url(url: &str) -> String {
+    let splitted_urls: Vec<&str> = url.split("://").collect(); // https:// or http://. It should only have one.
+    if splitted_urls.len() == 1 {
+        let mut base_url = url.split('/').collect::<Vec<&str>>()[0];
+        while base_url.contains("?") || base_url.contains("#") {
+            base_url = base_url.split('?').collect::<Vec<&str>>()[0];
+            base_url = base_url.split('#').collect::<Vec<&str>>()[0]; 
+        }
+        return base_url.to_string();
+    }
+
+    let right_side = splitted_urls[0]; // Should not fail
+    let mut left_side = splitted_urls[1].split('/').collect::<Vec<&str>>()[0]; // Should not fail
+    while left_side.contains("?") || left_side.contains("#") {
+        left_side = left_side.split('?').collect::<Vec<&str>>()[0];
+        left_side = left_side.split('#').collect::<Vec<&str>>()[0]; 
+    }
+
+    format!("{}://{}", right_side, left_side)
 }
 
 #[cfg(test)]
@@ -126,6 +150,44 @@ mod validate_url {
         assert_eq!(validate_url("https://mysite.com/image.png", ""), None);
         assert_eq!(validate_url("https://mysite.com/image.gif", ""), None);
         assert_eq!(validate_url("https://mysite.com/image.svg", ""), None);
+    }
+}
+
+#[cfg(test)]
+mod get_base_url {
+    use super::*;
+
+
+    #[test]
+    fn with_http() {
+        let base_site = "https://site.com.br";
+        assert_eq!(get_base_url(&format!("{base_site}/test1")), base_site.to_string());
+        assert_eq!(get_base_url(&format!("{base_site}/test1/test2")), base_site.to_string());
+        assert_eq!(get_base_url(&format!("{base_site}/test1/test2/test4#?41223")), base_site.to_string());
+    }
+
+    #[test]
+    fn without_http() {
+        let base_site = "www.site.com.br";
+        assert_eq!(get_base_url(&format!("{base_site}/test1")), base_site.to_string());
+        assert_eq!(get_base_url(&format!("{base_site}/test1/test2")), base_site.to_string());
+        assert_eq!(get_base_url(&format!("{base_site}/test1/test2/test4#?41223")), base_site.to_string());
+    }
+
+    #[test]
+    fn query_params() {
+        let base_site = "www.site.com.br";
+        assert_eq!(get_base_url(&format!("{base_site}?test1")), base_site.to_string());
+        assert_eq!(get_base_url(&format!("{base_site}/test1?test=2")), base_site.to_string());
+        assert_eq!(get_base_url(&format!("{base_site}/?other_test=2")), base_site.to_string());
+    }
+
+    #[test]
+    fn complex_urls() {
+        let base_site = "www.site.com.br";
+        assert_eq!(get_base_url(&format!("{base_site}?test1")), base_site.to_string());
+        assert_eq!(get_base_url(&format!("{base_site}/test1?test=2")), base_site.to_string());
+        assert_eq!(get_base_url(&format!("{base_site}/?other_test=2")), base_site.to_string());
     }
 }
 
