@@ -26,7 +26,16 @@ impl UrlData {
 
 /// Normalizes URLs returning it's `host` + `path` **always ending with `/`**
 /// 
+/// **A valid URL includes the http/https protocol in it**
+/// 
 /// This method won't including the initial `www.` prefix of the website.
+/// 
+/// ## Example
+/// ```
+/// assert_eq(normalize_url("www.site.com/?q=10"), "site.com/".to_string())
+/// 
+/// assert_eq(normalize_url("https://www.site.com/?q=10"), "site.com/".to_string())
+/// ```
 pub fn normalize_url(url: String) -> String {
     let parsed_url = Url::parse(&url).unwrap();
     let host = parsed_url.host_str().unwrap().replace("www.", "");
@@ -59,27 +68,25 @@ pub fn validate_url(url: &str, parent_url: &str) -> Option<String> {
     None
 }
 
-/// site.com/anypath -> site.com
-/// site.com/path1/path2 -> site.com
+/// Returns the base_url, AKA host, from the URL.
+/// 
+/// **A valid URL includes the http/https protocol in it**
+/// 
+/// This method won't including the initial `www.` prefix of the website.
+/// 
+/// ## Example
+/// 
+/// ```rs
+/// assert_eq(get_base_url("www.site.com/path1/path2?q=a"), "site.com".to_string())
+/// 
+/// assert_eq(get_base_url("https://www.site.com/?q=10"), "site.com".to_string())
+/// 
+/// ```
 pub fn get_base_url(url: &str) -> String {
-    let splitted_urls: Vec<&str> = url.split("://").collect(); // https:// or http://. It should only have one.
-    if splitted_urls.len() == 1 {
-        let mut base_url = url.split('/').collect::<Vec<&str>>()[0];
-        while base_url.contains("?") || base_url.contains("#") {
-            base_url = base_url.split('?').collect::<Vec<&str>>()[0];
-            base_url = base_url.split('#').collect::<Vec<&str>>()[0];
-        }
-        return base_url.to_string();
-    }
+    let parsed_url = Url::parse("https://www.site.com.br/test1").unwrap();
+    let host = parsed_url.host_str().unwrap().replace("www.", "");
 
-    let right_side = splitted_urls[0]; // Should not fail
-    let mut left_side = splitted_urls[1].split('/').collect::<Vec<&str>>()[0]; // Should not fail
-    while left_side.contains("?") || left_side.contains("#") {
-        left_side = left_side.split('?').collect::<Vec<&str>>()[0];
-        left_side = left_side.split('#').collect::<Vec<&str>>()[0];
-    }
-
-    format!("{}://{}", right_side, left_side)
+    format!("{}", host)
 }
 
 #[cfg(test)]
@@ -156,68 +163,68 @@ mod get_base_url {
 
     #[test]
     fn with_http() {
-        let base_site = "https://site.com.br";
+        let base_site = "site.com.br";
         assert_eq!(
-            get_base_url(&format!("{base_site}/test1")),
+            get_base_url(&format!("https://{base_site}/test1/test2")),
             base_site.to_string()
         );
         assert_eq!(
-            get_base_url(&format!("{base_site}/test1/test2")),
+            get_base_url(&format!("https://{base_site}/test1/test2")),
             base_site.to_string()
         );
         assert_eq!(
-            get_base_url(&format!("{base_site}/test1/test2/test4#?41223")),
+            get_base_url(&format!("https://{base_site}/test1/test2/test4#?41223")),
             base_site.to_string()
         );
     }
 
     #[test]
     fn without_http() {
-        let base_site = "www.site.com.br";
+        let base_site = "site.com.br";
         assert_eq!(
-            get_base_url(&format!("{base_site}/test1")),
+            get_base_url(&format!("https://{base_site}/test1")),
             base_site.to_string()
         );
         assert_eq!(
-            get_base_url(&format!("{base_site}/test1/test2")),
+            get_base_url(&format!("https://{base_site}/test1/test2")),
             base_site.to_string()
         );
         assert_eq!(
-            get_base_url(&format!("{base_site}/test1/test2/test4#?41223")),
+            get_base_url(&format!("https://{base_site}/test1/test2/test4#?41223")),
             base_site.to_string()
         );
     }
 
     #[test]
     fn query_params() {
-        let base_site = "www.site.com.br";
+        let base_site = "site.com.br";
         assert_eq!(
-            get_base_url(&format!("{base_site}?test1")),
+            get_base_url(&format!("https://{base_site}?test1")),
             base_site.to_string()
         );
         assert_eq!(
-            get_base_url(&format!("{base_site}/test1?test=2")),
+            get_base_url(&format!("https://{base_site}/test1?test=2")),
             base_site.to_string()
         );
         assert_eq!(
-            get_base_url(&format!("{base_site}/?other_test=2")),
+            get_base_url(&format!("https://{base_site}/?other_test=2")),
             base_site.to_string()
         );
     }
 
     #[test]
     fn complex_urls() {
-        let base_site = "www.site.com.br";
+        let base_site = "site.com.br";
         assert_eq!(
-            get_base_url(&format!("{base_site}?test1")),
+            get_base_url(&format!("https://{base_site}?test1")),
             base_site.to_string()
         );
         assert_eq!(
-            get_base_url(&format!("{base_site}/test1?test=2")),
+            get_base_url(&format!("https://{base_site}/test1?test=2")),
             base_site.to_string()
         );
         assert_eq!(
-            get_base_url(&format!("{base_site}/?other_test=2")),
+            get_base_url(&format!("https://{base_site}/?other_test=2")),
             base_site.to_string()
         );
     }
@@ -241,6 +248,22 @@ mod normalize_url {
             );
         }
     }
+    
+    #[test]
+    fn normalize_query_params() {
+        let sites = ["site.com", "othersite.com", "moreonesite.com"];
+        for site in sites {
+            assert_eq!(
+                normalize_url(format!("https://{site}/#div_to")),
+                format!("{}/", site.to_string())
+            );
+            assert_eq!(
+                normalize_url(format!("https://www.{site}?q=20")),
+                format!("{}/", site.to_string())
+            );
+        }
+    }
+
 
     #[test]
     fn normalize_multiple_slash() {
