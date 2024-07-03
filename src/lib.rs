@@ -107,10 +107,11 @@ pub async fn analise_page(url: &str) -> Option<Vec<String>> {
                 println!("[ERROR] Failed to read html content");
                 return None;
             }
-            Ok(html) => return Some(extract_strings_from_html(&html, &url, "cpavalanche")),
+            Ok(html) => return Some(extract_strings_from_html(&html, &url, "wikipedia")),
         },
     }
 }
+
 
 pub fn extract_strings_from_html(text: &str, parent_url: &str, domain: &str) -> Vec<String> {
     let re = Regex::new(r#"[\"'`](.*?)[\"'`]"#).unwrap();
