@@ -4,7 +4,7 @@ use std::collections::{vec_deque, VecDeque};
 
 use graph::Graph;
 use regex::Regex;
-use reqwest::Url;
+use reqwest::{StatusCode, Url};
 use urldata::{normalize_url, validate_url, UrlData};
 
 #[derive(Debug)]
@@ -18,7 +18,7 @@ pub struct Analiser {
 struct UrlQueue {
     depth: usize,
     url: String,
-    parent: String
+    parent: String,
 }
 
 impl UrlQueue {
@@ -26,7 +26,7 @@ impl UrlQueue {
         UrlQueue {
             url: url.to_string(),
             depth,
-            parent
+            parent,
         }
     }
 }
@@ -38,7 +38,7 @@ impl Analiser {
             queue: VecDeque::from([UrlQueue {
                 depth: 1,
                 url: url.to_string(),
-                parent: String::from("")
+                parent: String::from(""),
             }]),
             max_depth,
         }
@@ -48,17 +48,17 @@ impl Analiser {
         self.queue.push_back(UrlQueue {
             depth,
             url: url.to_string(),
-            parent
+            parent,
         })
     }
 
     fn already_scanned(&self, url: &str) -> bool {
         for scanned_urls in &self.graph.urls {
             if normalize_url(scanned_urls.url.clone()) == normalize_url(url.to_string()) {
-                return true
+                return true;
             }
         }
-        return false
+        return false;
     }
 
     fn in_queue(&self, url: &str) -> bool {
@@ -77,17 +77,21 @@ impl Analiser {
                 match analise_page(&url.url).await {
                     Some(href_url) => {
                         println!("[{}] {} ----> {}", href_url.len(), &url.parent, &url.url);
-                        self.graph.add(UrlData::new(url.url.to_string()), &url.parent);
+                        self.graph
+                            .add(UrlData::new(url.url.to_string()), &url.parent);
                         for new_url in href_url {
+                            println!("{}", new_url);
+                            continue;
                             if self.already_scanned(&new_url) {
-                                self.graph.add(UrlData::new(url.url.to_string()), &url.parent);
+                                self.graph
+                                    .add(UrlData::new(url.url.to_string()), &url.parent);
                             } else if !self.in_queue(&new_url) {
                                 self.add_to_queue(&new_url, url.depth + 1, url.url.to_string())
                             }
                         }
                     }
-                    None => {
-                        println!("[Validator] {} is invalid.", &url.url);
+                    _ => {
+                        println!("Non valid: {}", &url.url);
                     }
                 }
             }
@@ -99,19 +103,22 @@ pub async fn analise_page(url: &str) -> Option<Vec<String>> {
     let req_result = reqwest::get(url).await;
     match req_result {
         Err(e) => {
-            println!("{:?}", e);
             return None;
         }
-        Ok(content) => match content.text().await {
-            Err(e) => {
-                println!("[ERROR] Failed to read html content");
+        Ok(content) => {
+            if content.status() == StatusCode::NOT_FOUND  {
                 return None;
             }
-            Ok(html) => return Some(extract_strings_from_html(&html, &url, "github")),
-        },
+            match content.text().await {
+                Err(e) => {
+                    println!("[ERROR] Failed to read html content");
+                    return None;
+                }
+                Ok(html) => return Some(extract_strings_from_html(&html, &url, "domain")),
+            }
+        }
     }
 }
-
 
 pub fn extract_strings_from_html(text: &str, parent_url: &str, domain: &str) -> Vec<String> {
     let re = Regex::new(r#"[\"'`](.*?)[\"'`]"#).unwrap();
