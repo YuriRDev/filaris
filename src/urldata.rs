@@ -60,6 +60,11 @@ pub fn validate_url(url: &str, parent_url: &str) -> Option<String> {
         return Some(url.replace("www.", ""));
     }
 
+    // Relative path, in this case, could be `/ANY` or `../ANY`
+    if !url.starts_with("/") && !url.starts_with(".") {
+        return None
+    }
+
     let parsed_parent_url = Url::parse(parent_url);
     match parsed_parent_url {
         Ok(valid_url) => match valid_url.join(url) {

@@ -107,7 +107,7 @@ pub async fn analise_page(url: &str) -> Option<Vec<String>> {
                 println!("[ERROR] Failed to read html content");
                 return None;
             }
-            Ok(html) => return Some(extract_strings_from_html(&html, &url, "wikipedia")),
+            Ok(html) => return Some(extract_strings_from_html(&html, &url, "github")),
         },
     }
 }
