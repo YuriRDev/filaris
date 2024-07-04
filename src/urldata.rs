@@ -25,17 +25,10 @@ impl UrlData {
 }
 
 /// Normalizes URLs returning it's `host` + `path` **always ending with `/`**
-/// 
+///
 /// **A valid URL includes the http/https protocol in it**
-/// 
+///
 /// This method won't including the initial `www.` prefix of the website.
-/// 
-/// ## Example
-/// ```
-/// assert_eq(normalize_url("www.site.com/?q=10"), "site.com/".to_string())
-/// 
-/// assert_eq(normalize_url("https://www.site.com/?q=10"), "site.com/".to_string())
-/// ```
 pub fn normalize_url(url: String) -> String {
     let parsed_url = Url::parse(&url).unwrap();
     let host = parsed_url.host_str().unwrap().replace("www.", "");
@@ -44,46 +37,48 @@ pub fn normalize_url(url: String) -> String {
     format!("{host}{path}")
 }
 
+/// Check if a URL is valid, if so, returns a valid URL. 
+/// 
+/// E.g. joining `url`'s relative path to it's parent. If not, returns None 
+/// 
+/// * `url`: URL or a relative path (`/`, `../`).
+/// * `parent_url`: URL that "discovered" the `url`. 
+/// 
+/// If `url` is a valid URL, `parent_url` will not be evaluated.
+/// 
 pub fn validate_url(url: &str, parent_url: &str) -> Option<String> {
-    let parsed_url = Url::parse(url);
-
-    let re = Regex::new(r"^(https?://|www\.|/)[^\s]*$").unwrap();
-    if re.is_match(url) {
-        for filetype in IGNORE_FILETYPE {
-            if url.ends_with(filetype) {
-                return None;
-            }
-        }
-
-        if url.contains("#") {
+    for filetype in IGNORE_FILETYPE {
+        if url.ends_with(filetype) {
             return None;
         }
-
-        if url.starts_with('/') {
-            return Some(format!("{}{}", get_base_url(parent_url), url));
-        }
-
-        return Some(url.to_string());
     }
+
+    if let Ok(parsed_url) = Url::parse(url) {
+        if parsed_url.scheme() != "https" && parsed_url.scheme() != "http" {
+            return None;
+        }
+        return Some(url.replace("www.", ""));
+    }
+
+    let parsed_parent_url = Url::parse(parent_url);
+    match parsed_parent_url {
+        Ok(valid_url) => match valid_url.join(url) {
+            Ok(joined_url) => return Some(joined_url.to_string().replace("www.", "")),
+            _ => return None,
+        },
+        _ => return None,
+    }
+
     None
 }
 
 /// Returns the base_url, AKA host, from the URL.
-/// 
+///
 /// **A valid URL includes the http/https protocol in it**
-/// 
+///
 /// This method won't including the initial `www.` prefix of the website.
-/// 
-/// ## Example
-/// 
-/// ```rs
-/// assert_eq(get_base_url("www.site.com/path1/path2?q=a"), "site.com".to_string())
-/// 
-/// assert_eq(get_base_url("https://www.site.com/?q=10"), "site.com".to_string())
-/// 
-/// ```
 pub fn get_base_url(url: &str) -> String {
-    let parsed_url = Url::parse("https://www.site.com.br/test1").unwrap();
+    let parsed_url = Url::parse(url).unwrap();
     let host = parsed_url.host_str().unwrap().replace("www.", "");
 
     format!("{}", host)
@@ -99,6 +94,7 @@ mod validate_url {
         assert_eq!(validate_url("htts://invalid.co", ""), None);
         assert_eq!(validate_url("obiously", ""), None);
         assert_eq!(validate_url("ftp::asd", ""), None);
+        assert_eq!(validate_url("/valid_path", ""), None);
     }
 
     #[test]
@@ -112,20 +108,16 @@ mod validate_url {
             Some("https://site".to_string())
         );
         assert_eq!(
-            validate_url("http://site.com", ""),
+            validate_url("http://www.site.com", ""),
             Some("http://site.com".to_string())
         );
         assert_eq!(
-            validate_url("www.site.com", ""),
-            Some("www.site.com".to_string())
+            validate_url("http://site.com/path1?q=10", ""),
+            Some("http://site.com/path1?q=10".to_string())
         );
         assert_eq!(
-            validate_url("/valid_path", ""),
-            Some("/valid_path".to_string())
-        );
-        assert_eq!(
-            validate_url("/valid_path/again", ""),
-            Some("/valid_path/again".to_string())
+            validate_url("http://www.site.com/valid_path/again", ""),
+            Some("http://site.com/valid_path/again".to_string())
         );
     }
 
@@ -140,8 +132,8 @@ mod validate_url {
             Some("https://site.com/path1".to_string())
         );
         assert_eq!(
-            validate_url("/path1/path2", "www.site.com"),
-            Some("www.site.com/path1/path2".to_string())
+            validate_url("/path1/path2", "http://www.site.com"),
+            Some("http://site.com/path1/path2".to_string())
         );
     }
 
@@ -248,7 +240,7 @@ mod normalize_url {
             );
         }
     }
-    
+
     #[test]
     fn normalize_query_params() {
         let sites = ["site.com", "othersite.com", "moreonesite.com"];
@@ -264,11 +256,10 @@ mod normalize_url {
         }
     }
 
-
     #[test]
     fn normalize_multiple_slash() {
-        // HTTP RFC 2396 (https://www.ietf.org/rfc/rfc2396.txt) defined multiple_slashes 
-        // to be valid and depending on the server implementation non-equivalent. 
+        // HTTP RFC 2396 (https://www.ietf.org/rfc/rfc2396.txt) defined multiple_slashes
+        // to be valid and depending on the server implementation non-equivalent.
         // - site.com/path1 != site.com////path1
         // But, if the last character is not a slash_bar, if including it, will be equivalent.
         // - site.com/path1 == site.com/path1/
