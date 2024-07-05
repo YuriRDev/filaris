@@ -12,6 +12,7 @@ pub struct Analiser {
     graph: Graph,
     queue: VecDeque<UrlQueue>,
     max_depth: usize,
+    max_urls: usize,
     url_math: String,
 }
 
@@ -33,16 +34,17 @@ impl UrlQueue {
 }
 
 impl Analiser {
-    pub fn new(url: &str, max_depth: usize, url_match: &str) -> Analiser {
+    pub fn new(url: &str, url_match: &str, max_depth: usize, max_urls: usize) -> Analiser {
         Analiser {
             graph: Graph::new(),
             queue: VecDeque::from([UrlQueue {
-                depth: 1,
+                depth: 0,
                 url: url.to_string(),
                 parent: String::from(""),
             }]),
-            max_depth,
             url_math: url_match.to_string(),
+            max_depth,
+            max_urls,
         }
     }
 
@@ -76,9 +78,16 @@ impl Analiser {
         while !self.queue.is_empty() {
             if let Some(url) = self.queue.pop_front() {
                 let parent = url.url.to_string();
+                if url.depth > self.max_depth {
+                    return;
+                }
 
                 match analise_page(&url.url, &self.url_math).await {
                     Some(href_url) => {
+                        if self.graph.size() >= self.max_urls {
+                            return;
+                        }
+
                         println!("[{}] {} ----> {}", href_url.len(), &url.parent, &url.url);
                         self.graph
                             .add(UrlData::new(url.url.to_string()), &url.parent);
@@ -86,6 +95,10 @@ impl Analiser {
                             if self.already_scanned(&new_url) {
                                 self.graph
                                     .add(UrlData::new(url.url.to_string()), &url.parent);
+
+                                if self.graph.size() >= self.max_urls {
+                                    return;
+                                }
                             } else if !self.in_queue(&new_url) {
                                 self.add_to_queue(&new_url, url.depth + 1, url.url.to_string())
                             }

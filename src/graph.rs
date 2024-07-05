@@ -11,6 +11,10 @@ impl Graph {
         Graph { urls: Vec::new() }
     }
 
+    pub fn size(&self) -> usize {
+        self.urls.len()
+    }
+
     fn add_or_get_pos(&mut self, info: UrlData) -> usize {
         for i in 0..self.urls.len() {
             if self.urls[i].url == info.url {

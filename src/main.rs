@@ -14,7 +14,7 @@ struct Args {
 
     /// Number of the max depth of the Breadth First search.
     #[arg(short, long, default_value_t = 3)]
-    depth: u8,
+    depth: usize,
 
     /// Prints every new URL relation when it founds one.
     #[arg(short, long, default_value_t = true)]
@@ -22,7 +22,7 @@ struct Args {
 
     /// Number of the max URLs relation to be found.
     #[arg(long, default_value_t = 100)]
-    max_urls: u8,
+    max_urls: usize,
 
     /// Every new URL Discover needs to match this URL. Here, it could be
     /// passed a domain as a plain text
@@ -43,6 +43,6 @@ fn validate_initial_url(url: &str) -> Result<String, String> {
 async fn main() {
     let args = Args::parse();
 
-    let mut analiser = Analiser::new(&args.url, 2, &args.match_url);
+    let mut analiser = Analiser::new(&args.url, &args.match_url, args.depth, args.max_urls);
     analiser.start().await;
 }
