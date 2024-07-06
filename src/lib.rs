@@ -1,11 +1,32 @@
 mod graph;
 mod urldata;
-use std::collections::{vec_deque, VecDeque};
+use std::{
+    collections::{vec_deque, VecDeque},
+    fmt::format,
+};
 
+use colored::Colorize;
 use graph::Graph;
 use regex::Regex;
 use reqwest::{StatusCode, Url};
 use urldata::{normalize_url, validate_url, UrlData};
+
+#[derive(Debug)]
+pub enum VerboseLevel {
+    None = 0,           // Only print the start and end of program
+    SuccessAtempts = 1, // Only prints the success atempts
+    AllAtempts = 2,     // Prints all the atempts of reaching a URL
+}
+
+impl VerboseLevel {
+    pub fn from_u8(value: u8) -> VerboseLevel {
+        match value {
+            0 => VerboseLevel::None,
+            1 => VerboseLevel::SuccessAtempts,
+            _ => VerboseLevel::AllAtempts,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct Analiser {
@@ -14,6 +35,7 @@ pub struct Analiser {
     max_depth: usize,
     max_urls: usize,
     url_math: String,
+    verbose: VerboseLevel,
 }
 
 #[derive(Debug)]
@@ -34,7 +56,13 @@ impl UrlQueue {
 }
 
 impl Analiser {
-    pub fn new(url: &str, url_match: &str, max_depth: usize, max_urls: usize) -> Analiser {
+    pub fn new(
+        url: &str,
+        url_match: &str,
+        max_depth: usize,
+        max_urls: usize,
+        verbose: VerboseLevel,
+    ) -> Analiser {
         Analiser {
             graph: Graph::new(),
             queue: VecDeque::from([UrlQueue {
@@ -45,6 +73,7 @@ impl Analiser {
             url_math: url_match.to_string(),
             max_depth,
             max_urls,
+            verbose,
         }
     }
 
@@ -74,53 +103,84 @@ impl Analiser {
         false
     }
 
-    pub async fn start(&mut self) {
-        while !self.queue.is_empty() {
-            if let Some(url) = self.queue.pop_front() {
-                let parent = url.url.to_string();
-                if url.depth > self.max_depth {
-                    return;
-                }
+    fn log_new_url(&self, urls_len: usize, parent: &str, url: &str) {
+        match self.verbose {
+            VerboseLevel::None => {
+                return;
+            }
+            _ => {
+                let formated_number = match urls_len {
+                    0_usize..=9_usize => format!("  {}", urls_len),
+                    10_usize..=99_usize => format!(" {}", urls_len),
+                    _ => format!("{}", urls_len),
+                };
 
-                match analise_page(&url.url, &self.url_math).await {
-                    Some(href_url) => {
+                println!(
+                    "{} {} {} {}",
+                    format!("[URLs: {}]", formated_number).green(),
+                    parent.italic().bright_black(),
+                    "———>".green(),
+                    url.underline()
+                );
+            }
+        }
+    }
+
+    fn log_invalid_url(&self, url: &str) {
+        match self.verbose {
+            VerboseLevel::AllAtempts => {
+                println!("{} {}", "[Invalid  ]".red(), url.italic().bright_black())
+            }
+            _ => {}
+        }
+    }
+
+    pub async fn start(&mut self) {
+        while let Some(url) = self.queue.pop_front() {
+            if url.depth > self.max_depth {
+                return;
+            }
+
+            match analise_page(&url.url, &self.url_math).await {
+                Some(href_urls) => {
+                    if self.graph.size() >= self.max_urls {
+                        return;
+                    }
+
+                    self.log_new_url(href_urls.len(), &url.parent, &url.url);
+                    self.graph
+                        .add(UrlData::new(url.url.to_string()), &url.parent);
+
+                    for new_url in href_urls {
                         if self.graph.size() >= self.max_urls {
                             return;
                         }
 
-                        println!("[{}] {} ----> {}", href_url.len(), &url.parent, &url.url);
-                        self.graph
-                            .add(UrlData::new(url.url.to_string()), &url.parent);
-                        for new_url in href_url {
-                            if self.already_scanned(&new_url) {
-                                self.graph
-                                    .add(UrlData::new(url.url.to_string()), &url.parent);
-
-                                if self.graph.size() >= self.max_urls {
-                                    return;
-                                }
-                            } else if !self.in_queue(&new_url) {
-                                self.add_to_queue(&new_url, url.depth + 1, url.url.to_string())
-                            }
+                        if self.already_scanned(&new_url) {
+                            self.graph.add(UrlData::new(new_url.to_string()), &url.url);
+                        } else if !self.in_queue(&new_url) {
+                            self.add_to_queue(&new_url, url.depth + 1, url.url.to_string());
                         }
                     }
-                    _ => {
-                        println!("Non valid: {}", &url.url);
-                    }
+                }
+                None => {
+                    self.log_invalid_url(&url.url);
                 }
             }
         }
     }
 }
 
-pub async fn analise_page(url: &str, url_match: &str) -> Option<Vec<String>> {
+async fn analise_page(url: &str, url_match: &str) -> Option<Vec<String>> {
     let req_result = reqwest::get(url).await;
     match req_result {
         Err(e) => {
             return None;
         }
         Ok(content) => {
-            if content.status() == StatusCode::NOT_FOUND {
+            if content.status() == StatusCode::NOT_FOUND
+                || content.status() == StatusCode::FORBIDDEN
+            {
                 return None;
             }
             match content.text().await {
@@ -134,7 +194,7 @@ pub async fn analise_page(url: &str, url_match: &str) -> Option<Vec<String>> {
     }
 }
 
-pub fn extract_strings_from_html(text: &str, parent_url: &str, domain: &str) -> Vec<String> {
+fn extract_strings_from_html(text: &str, parent_url: &str, domain: &str) -> Vec<String> {
     let re = Regex::new(r#"[\"'`](.*?)[\"'`]"#).unwrap();
     let mut substrings: Vec<String> = Vec::new();
 
