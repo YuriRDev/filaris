@@ -1,6 +1,6 @@
 use clap::Parser;
 use reqwest;
-use scrapper::Analiser;
+use scrapper::{Analiser, VerboseLevel};
 use url::Url;
 
 /// Simple tool to explore and trace the pathways within any website.
@@ -20,7 +20,7 @@ struct Args {
     /// [0]: Log disabled on the console.
     /// [1]: Only successfull atempts are printed on the console
     /// [2]: All the atempts are printed on the console
-    #[arg(short, long, default_value_t = 1)]
+    #[arg(short, long, default_value_t = 1, value_parser = validate_verbose)]
     verbose: u8,
 
     /// Number of the max URLs relation to be found.
@@ -42,10 +42,24 @@ fn validate_initial_url(url: &str) -> Result<String, String> {
     })
 }
 
+fn validate_verbose(s: &str) -> Result<u8, String> {
+    match s.parse::<u8>() {
+        Ok(val) if val <= 2 => Ok(val),
+        Ok(_) => Err(String::from("Value must be between 0 and 2")),
+        Err(_) => Err(String::from("Invalid value, must be a number")),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
 
-    let mut analiser = Analiser::new(&args.url, &args.match_url, args.depth, args.max_urls);
+    let mut analiser = Analiser::new(
+        &args.url,
+        &args.match_url,
+        args.depth,
+        args.max_urls,
+        VerboseLevel::from_u8(args.verbose),
+    );
     analiser.start().await;
 }

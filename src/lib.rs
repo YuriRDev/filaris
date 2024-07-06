@@ -12,10 +12,20 @@ use reqwest::{StatusCode, Url};
 use urldata::{normalize_url, validate_url, UrlData};
 
 #[derive(Debug)]
-enum VerboseLevel {
+pub enum VerboseLevel {
     None = 0,           // Only print the start and end of program
     SuccessAtempts = 1, // Only prints the success atempts
     AllAtempts = 2,     // Prints all the atempts of reaching a URL
+}
+
+impl VerboseLevel {
+    pub fn from_u8(value: u8) -> VerboseLevel {
+        match value {
+            0 => VerboseLevel::None,
+            1 => VerboseLevel::SuccessAtempts,
+            _ => VerboseLevel::AllAtempts,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -46,7 +56,13 @@ impl UrlQueue {
 }
 
 impl Analiser {
-    pub fn new(url: &str, url_match: &str, max_depth: usize, max_urls: usize) -> Analiser {
+    pub fn new(
+        url: &str,
+        url_match: &str,
+        max_depth: usize,
+        max_urls: usize,
+        verbose: VerboseLevel,
+    ) -> Analiser {
         Analiser {
             graph: Graph::new(),
             queue: VecDeque::from([UrlQueue {
@@ -57,7 +73,7 @@ impl Analiser {
             url_math: url_match.to_string(),
             max_depth,
             max_urls,
-            verbose: VerboseLevel::AllAtempts,
+            verbose,
         }
     }
 
@@ -162,7 +178,9 @@ async fn analise_page(url: &str, url_match: &str) -> Option<Vec<String>> {
             return None;
         }
         Ok(content) => {
-            if content.status() == StatusCode::NOT_FOUND {
+            if content.status() == StatusCode::NOT_FOUND
+                || content.status() == StatusCode::FORBIDDEN
+            {
                 return None;
             }
             match content.text().await {
