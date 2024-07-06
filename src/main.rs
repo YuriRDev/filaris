@@ -1,6 +1,6 @@
 use clap::Parser;
 use reqwest;
-use scrapper::{analise_page, extract_strings_from_html, Analiser};
+use scrapper::Analiser;
 use url::Url;
 
 /// Simple tool to explore and trace the pathways within any website.
@@ -17,11 +17,14 @@ struct Args {
     depth: usize,
 
     /// Prints every new URL relation when it founds one.
-    #[arg(short, long, default_value_t = true)]
-    verbose: bool,
+    /// [0]: Log disabled on the console.
+    /// [1]: Only successfull atempts are printed on the console
+    /// [2]: All the atempts are printed on the console
+    #[arg(short, long, default_value_t = 1)]
+    verbose: u8,
 
     /// Number of the max URLs relation to be found.
-    #[arg(long, default_value_t = 100)]
+    #[arg(long, default_value_t = 10000)]
     max_urls: usize,
 
     /// Every new URL Discover needs to match this URL. Here, it could be
