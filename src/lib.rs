@@ -29,13 +29,14 @@ impl VerboseLevel {
 }
 
 #[derive(Debug)]
-pub struct Analiser {
+pub struct Analiser<'s> {
     graph: Graph,
     queue: VecDeque<UrlQueue>,
     max_depth: usize,
     max_urls: usize,
-    url_math: String,
+    match_str: String,
     verbose: VerboseLevel,
+    ignore_strs: Vec<&'s str>,
 }
 
 #[derive(Debug)]
@@ -55,14 +56,15 @@ impl UrlQueue {
     }
 }
 
-impl Analiser {
+impl<'s> Analiser<'s> {
     pub fn new(
         url: &str,
-        url_match: &str,
+        match_str: &str,
         max_depth: usize,
         max_urls: usize,
         verbose: VerboseLevel,
-    ) -> Analiser {
+        ignore_strs: Vec<&'s str>,
+    ) -> Analiser<'s> {
         Analiser {
             graph: Graph::new(),
             queue: VecDeque::from([UrlQueue {
@@ -70,10 +72,11 @@ impl Analiser {
                 url: url.to_string(),
                 parent: String::from(""),
             }]),
-            url_math: url_match.to_string(),
+            match_str: match_str.to_string(),
             max_depth,
             max_urls,
             verbose,
+            ignore_strs,
         }
     }
 
@@ -85,6 +88,7 @@ impl Analiser {
         })
     }
 
+    /// Checks if a URL was already scanned and added on the Graph Url's list.
     fn already_scanned(&self, url: &str) -> bool {
         for scanned_urls in &self.graph.urls {
             if normalize_url(scanned_urls.url.clone()) == normalize_url(url.to_string()) {
@@ -94,6 +98,7 @@ impl Analiser {
         return false;
     }
 
+    /// Checks if a URL is already in queue.
     fn in_queue(&self, url: &str) -> bool {
         for queue_urls in &self.queue {
             if normalize_url(queue_urls.url.clone()) == normalize_url(url.to_string()) {
@@ -103,6 +108,10 @@ impl Analiser {
         false
     }
 
+    /// Log a new valid URL "connection", that is,
+    /// based on the VerboseLevel, prints the URL connection in the format:
+    ///
+    /// ```[length] parent -> children```
     fn log_new_url(&self, urls_len: usize, parent: &str, url: &str) {
         match self.verbose {
             VerboseLevel::None => {
@@ -126,6 +135,10 @@ impl Analiser {
         }
     }
 
+    /// Log a invalid URL discovery, based on the VerboseLevel,
+    /// prints the URL in the format:
+    ///
+    /// ```[Invalid] url```
     fn log_invalid_url(&self, url: &str) {
         match self.verbose {
             VerboseLevel::AllAtempts => {
@@ -135,23 +148,59 @@ impl Analiser {
         }
     }
 
+    /// Checks if a URL should be scanned, based on the
+    /// `math_str` and `ignore_str` of the args
+    fn should_scan_url(&self, url: &str) -> bool {
+        if url.contains(&self.match_str) {
+            for ignore in &self.ignore_strs {
+                if url.contains(ignore) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        false
+    }
+
+    fn extract_urls_from_content(&self, content: &str, parent_url: &str) -> Vec<String> {
+        // @TODO: If content is HTML parse
+        // @TODO: If content is JS parse
+
+        let re = Regex::new(r#"[\"'`](.*?)[\"'`]"#).unwrap();
+        let mut substrings: Vec<String> = Vec::new();
+
+        for cap in re.captures_iter(content) {
+            if let Some(url) = validate_url(&cap[1], parent_url) {
+                if self.should_scan_url(&url) {
+                    substrings.push(url.to_string());
+                }
+            }
+        }
+
+        substrings
+    }
+
     pub async fn start(&mut self) {
         while let Some(url) = self.queue.pop_front() {
             if url.depth > self.max_depth {
                 return;
             }
 
-            match analise_page(&url.url, &self.url_math).await {
-                Some(href_urls) => {
+            match get_page_content(&url.url).await {
+                None => self.log_invalid_url(&url.url),
+                Some(content) => {
                     if self.graph.size() >= self.max_urls {
                         return;
                     }
 
-                    self.log_new_url(href_urls.len(), &url.parent, &url.url);
+                    let founded_urls = self.extract_urls_from_content(&content, &url.url);
+
+                    self.log_new_url(founded_urls.len(), &url.parent, &url.url);
                     self.graph
                         .add(UrlData::new(url.url.to_string()), &url.parent);
-
-                    for new_url in href_urls {
+                    
+                    for new_url in founded_urls {
                         if self.graph.size() >= self.max_urls {
                             return;
                         }
@@ -163,15 +212,14 @@ impl Analiser {
                         }
                     }
                 }
-                None => {
-                    self.log_invalid_url(&url.url);
-                }
             }
         }
     }
 }
 
-async fn analise_page(url: &str, url_match: &str) -> Option<Vec<String>> {
+/// Requests for the page content, and return's it if the status code
+/// is not 404 or 403. All the other contents for now are returned OK.
+async fn get_page_content(url: &str) -> Option<String> {
     let req_result = reqwest::get(url).await;
     match req_result {
         Err(e) => {
@@ -188,27 +236,8 @@ async fn analise_page(url: &str, url_match: &str) -> Option<Vec<String>> {
                     println!("[ERROR] Failed to read html content");
                     return None;
                 }
-                Ok(html) => return Some(extract_strings_from_html(&html, &url, &url_match)),
-            }
+                Ok(value) => return Some(value),
+            };
         }
     }
-}
-
-fn extract_strings_from_html(text: &str, parent_url: &str, domain: &str) -> Vec<String> {
-    let re = Regex::new(r#"[\"'`](.*?)[\"'`]"#).unwrap();
-    let mut substrings: Vec<String> = Vec::new();
-
-    for cap in re.captures_iter(text) {
-        if let Some(url) = validate_url(&cap[1], parent_url) {
-            if is_same_domain(&url, domain) {
-                substrings.push(url.to_string());
-            }
-        }
-    }
-
-    substrings
-}
-
-fn is_same_domain(url: &str, domain: &str) -> bool {
-    url.contains(domain)
 }

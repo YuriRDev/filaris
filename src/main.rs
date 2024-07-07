@@ -27,10 +27,14 @@ struct Args {
     #[arg(long, default_value_t = 10000)]
     max_urls: usize,
 
-    /// Every new URL Discover needs to match this URL. Here, it could be
-    /// passed a domain as a plain text
+    /// Every new URL Discover needs to match this str. Here, it could be
+    /// passed a domain, to search only for paths within the main website.
     #[arg(long, default_value_t = String::from(""))]
-    match_url: String,
+    match_str: String,
+
+    /// Ignore all URLs containing this strings, splitted by `,`
+    #[arg(short, long, default_value_t = String::from(""))]
+    ignore: String,
 }
 
 fn validate_initial_url(url: &str) -> Result<String, String> {
@@ -45,8 +49,8 @@ fn validate_initial_url(url: &str) -> Result<String, String> {
 fn validate_verbose(s: &str) -> Result<u8, String> {
     match s.parse::<u8>() {
         Ok(val) if val <= 2 => Ok(val),
-        Ok(_) => Err(String::from("Value must be between 0 and 2")),
-        Err(_) => Err(String::from("Invalid value, must be a number")),
+        Ok(_) => Err(String::from("Verbose must be between 0 and 2")),
+        Err(_) => Err(String::from("Verbose must be a number")),
     }
 }
 
@@ -54,12 +58,19 @@ fn validate_verbose(s: &str) -> Result<u8, String> {
 async fn main() {
     let args = Args::parse();
 
+    let ignore_str: Vec<&str> = args
+        .ignore
+        .split(",")
+        .map(|s| s.trim())
+        .collect();
+
     let mut analiser = Analiser::new(
         &args.url,
-        &args.match_url,
+        &args.match_str,
         args.depth,
         args.max_urls,
         VerboseLevel::from_u8(args.verbose),
+        ignore_str,
     );
     analiser.start().await;
 }
