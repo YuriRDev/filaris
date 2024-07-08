@@ -1,14 +1,11 @@
 mod graph;
 mod urldata;
-use std::{
-    collections::{vec_deque, VecDeque},
-    fmt::format,
-};
+use std::collections::VecDeque;
 
 use colored::Colorize;
 use graph::Graph;
 use regex::Regex;
-use reqwest::{StatusCode, Url};
+use reqwest::StatusCode;
 use urldata::{normalize_url, validate_url, UrlData};
 
 #[derive(Debug)]
@@ -44,16 +41,6 @@ struct UrlQueue {
     depth: usize,
     url: String,
     parent: String,
-}
-
-impl UrlQueue {
-    pub fn new(url: &str, depth: usize, parent: String) -> UrlQueue {
-        UrlQueue {
-            url: url.to_string(),
-            depth,
-            parent,
-        }
-    }
 }
 
 impl<'s> Analiser<'s> {
@@ -95,7 +82,7 @@ impl<'s> Analiser<'s> {
                 return true;
             }
         }
-        return false;
+        false
     }
 
     /// Checks if a URL is already in queue.
@@ -114,9 +101,7 @@ impl<'s> Analiser<'s> {
     /// ```[length] parent -> children```
     fn log_new_url(&self, urls_len: usize, parent: &str, url: &str) {
         match self.verbose {
-            VerboseLevel::None => {
-                return;
-            }
+            VerboseLevel::None => {}
             _ => {
                 let formated_number = match urls_len {
                     0_usize..=9_usize => format!("  {}", urls_len),
@@ -140,11 +125,8 @@ impl<'s> Analiser<'s> {
     ///
     /// ```[Invalid] url```
     fn log_invalid_url(&self, url: &str) {
-        match self.verbose {
-            VerboseLevel::AllAtempts => {
-                println!("{} {}", "[Invalid  ]".red(), url.italic().bright_black())
-            }
-            _ => {}
+        if let VerboseLevel::AllAtempts = self.verbose {
+            println!("{} {}", "[Invalid  ]".red(), url.italic().bright_black())
         }
     }
 
@@ -160,7 +142,7 @@ impl<'s> Analiser<'s> {
             return true;
         }
 
-        false
+        true
     }
 
     fn extract_urls_from_content(&self, content: &str, parent_url: &str) -> Vec<String> {
@@ -199,7 +181,7 @@ impl<'s> Analiser<'s> {
                     self.log_new_url(founded_urls.len(), &url.parent, &url.url);
                     self.graph
                         .add(UrlData::new(url.url.to_string()), &url.parent);
-                    
+
                     for new_url in founded_urls {
                         if self.graph.size() >= self.max_urls {
                             return;
@@ -222,9 +204,7 @@ impl<'s> Analiser<'s> {
 async fn get_page_content(url: &str) -> Option<String> {
     let req_result = reqwest::get(url).await;
     match req_result {
-        Err(e) => {
-            return None;
-        }
+        Err(_e) => None,
         Ok(content) => {
             if content.status() == StatusCode::NOT_FOUND
                 || content.status() == StatusCode::FORBIDDEN
@@ -232,12 +212,12 @@ async fn get_page_content(url: &str) -> Option<String> {
                 return None;
             }
             match content.text().await {
-                Err(e) => {
+                Err(_e) => {
                     println!("[ERROR] Failed to read html content");
-                    return None;
+                    None
                 }
-                Ok(value) => return Some(value),
-            };
+                Ok(value) => Some(value),
+            }
         }
     }
 }

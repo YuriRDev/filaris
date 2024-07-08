@@ -1,5 +1,4 @@
 use clap::Parser;
-use reqwest;
 use scrapper::{Analiser, VerboseLevel};
 use url::Url;
 
@@ -60,7 +59,7 @@ async fn main() {
 
     let ignore_str: Vec<&str> = args
         .ignore
-        .split(",")
+        .split(',')
         .map(|s| s.trim())
         .collect();
 

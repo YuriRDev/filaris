@@ -1,12 +1,10 @@
-use regex::Regex;
-use reqwest::get;
-use url::{Host, Position, Url};
+use url::Url;
 
 /// Some files are not important for us, such as images, stylesheet, etc...
 /// All the following filetypes will be ignored when searching for a URL.
 /// When this constant changes, don't forget to also change the test bellow.
-const IGNORE_FILETYPE: [&str; 8] = [
-    ".png", ".gif", ".jpeg", ".webp", ".svg", ".css", ".ico", ".jpg",
+const IGNORE_FILETYPE: [&str; 9] = [
+    ".png", ".gif", ".jpeg", ".webp", ".svg", ".css", ".ico", ".jpg", ".mp4",
 ];
 
 #[derive(Debug)]
@@ -37,15 +35,15 @@ pub fn normalize_url(url: String) -> String {
     format!("{host}{path}")
 }
 
-/// Check if a URL is valid, if so, returns a valid URL. 
-/// 
-/// E.g. joining `url`'s relative path to it's parent. If not, returns None 
-/// 
+/// Check if a URL is valid, if so, returns a valid URL.
+///
+/// E.g. joining `url`'s relative path to it's parent. If not, returns None
+///
 /// * `url`: URL or a relative path (`/`, `../`).
-/// * `parent_url`: URL that "discovered" the `url`. 
-/// 
+/// * `parent_url`: URL that "discovered" the `url`.
+///
 /// If `url` is a valid URL, `parent_url` will not be evaluated.
-/// 
+///
 pub fn validate_url(url: &str, parent_url: &str) -> Option<String> {
     for filetype in IGNORE_FILETYPE {
         if url.ends_with(filetype) {
@@ -61,20 +59,18 @@ pub fn validate_url(url: &str, parent_url: &str) -> Option<String> {
     }
 
     // Relative path, in this case, could be `/ANY` or `../ANY`
-    if !url.starts_with("/") && !url.starts_with(".") {
-        return None
+    if !url.starts_with('/') && !url.starts_with('.') {
+        return None;
     }
 
     let parsed_parent_url = Url::parse(parent_url);
     match parsed_parent_url {
         Ok(valid_url) => match valid_url.join(url) {
-            Ok(joined_url) => return Some(joined_url.to_string().replace("www.", "")),
-            _ => return None,
+            Ok(joined_url) => Some(joined_url.to_string().replace("www.", "")),
+            _ => None,
         },
-        _ => return None,
+        _ => None,
     }
-
-    None
 }
 
 /// Returns the base_url, AKA host, from the URL.
@@ -82,11 +78,12 @@ pub fn validate_url(url: &str, parent_url: &str) -> Option<String> {
 /// **A valid URL includes the http/https protocol in it**
 ///
 /// This method won't including the initial `www.` prefix of the website.
+#[warn(dead_code)]
 pub fn get_base_url(url: &str) -> String {
     let parsed_url = Url::parse(url).unwrap();
     let host = parsed_url.host_str().unwrap().replace("www.", "");
 
-    format!("{}", host)
+    host.to_string()
 }
 
 #[cfg(test)]
