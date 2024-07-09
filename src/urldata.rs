@@ -39,7 +39,7 @@ pub fn normalize_url(url: String) -> String {
 ///
 /// E.g. joining `url`'s relative path to it's parent. If not, returns None
 ///
-/// * `url`: URL or a relative path (`/`, `../`).
+/// * `url`: URL or a relative path.
 /// * `parent_url`: URL that "discovered" the `url`.
 ///
 /// If `url` is a valid URL, `parent_url` will not be evaluated.
@@ -56,11 +56,6 @@ pub fn validate_url(url: &str, parent_url: &str) -> Option<String> {
             return None;
         }
         return Some(url.replace("www.", ""));
-    }
-
-    // Relative path, in this case, could be `/ANY` or `../ANY`
-    if !url.starts_with('/') && !url.starts_with('.') {
-        return None;
     }
 
     let parsed_parent_url = Url::parse(parent_url);

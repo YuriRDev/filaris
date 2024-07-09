@@ -2,36 +2,31 @@ use clap::Parser;
 use scrapper::{Analiser, VerboseLevel};
 use url::Url;
 
-/// Simple tool to explore and trace the pathways within any website.
-/// Creating a comprehensive "path web"
+/// A web scraper tool to explore and trace pathways within websites.
 #[derive(Parser, Debug)]
-#[command(version = "1.0.0v", about)]
+#[command(version = "1.0.0")]
 struct Args {
-    /// First URL to be scanned. Needs to include "http" / "https".
+    /// The initial URL to start scanning from. Ensure it starts with 'http' or 'https'.
     #[arg(short, long, value_parser = validate_initial_url)]
     url: String,
 
-    /// Number of the max depth of the Breadth First search.
+    /// Defines how deep the BFS should go.
     #[arg(short, long, default_value_t = 3)]
     depth: usize,
 
-    /// Prints every new URL relation when it founds one.
-    /// [0]: Log disabled on the console.
-    /// [1]: Only successfull atempts are printed on the console
-    /// [2]: All the atempts are printed on the console
+    /// Sets the verbosity level for logging URL relations. 0 disables logging, 1 logs only successful attempts, and 2 logs all attempts.
     #[arg(short, long, default_value_t = 1, value_parser = validate_verbose)]
     verbose: u8,
 
-    /// Number of the max URLs relation to be found.
-    #[arg(long, default_value_t = 10000)]
+    /// Specifies the maximum number of URL relations to discover.
+    #[arg(long, default_value_t = 1000)]
     max_urls: usize,
 
-    /// Every new URL Discover needs to match this str. Here, it could be
-    /// passed a domain, to search only for paths within the main website.
+    /// A string that new URLs must contain to be considered. Default is an empty string, meaning all URLs are considered."
     #[arg(long, default_value_t = String::from(""))]
     match_str: String,
 
-    /// Ignore all URLs containing this strings, splitted by `,`
+    /// A comma-separated list of strings. URLs containing any of these strings will be ignored. Default is an empty string, meaning no URLs are ignored.
     #[arg(short, long, default_value_t = String::from(""))]
     ignore: String,
 }
@@ -57,11 +52,7 @@ fn validate_verbose(s: &str) -> Result<u8, String> {
 async fn main() {
     let args = Args::parse();
 
-    let ignore_str: Vec<&str> = args
-        .ignore
-        .split(',')
-        .map(|s| s.trim())
-        .collect();
+    let ignore_str: Vec<&str> = args.ignore.split(',').map(|s| s.trim()).collect();
 
     let mut analiser = Analiser::new(
         &args.url,
