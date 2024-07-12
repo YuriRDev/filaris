@@ -1,5 +1,5 @@
 use clap::Parser;
-use scrapper::{Analiser, VerboseLevel};
+use scrapper::{Analiser, Options, VerboseLevel};
 use url::Url;
 
 /// A web scraper tool to explore and trace pathways within websites.
@@ -52,15 +52,20 @@ fn validate_verbose(s: &str) -> Result<u8, String> {
 async fn main() {
     let args = Args::parse();
 
-    let ignore_str: Vec<&str> = args.ignore.split(',').map(|s| s.trim()).collect();
+    let ignore_str: Vec<String> = args
+        .ignore
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
 
-    let mut analiser = Analiser::new(
-        &args.url,
-        &args.match_str,
+    let options = Options::new(
         args.depth,
         args.max_urls,
+        args.match_str,
         VerboseLevel::from_u8(args.verbose),
         ignore_str,
     );
-    analiser.start().await;
+
+    let mut analiser = Analiser::new(&args.url);
+    analiser.start(options).await;
 }
