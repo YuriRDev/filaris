@@ -133,13 +133,21 @@ impl<'s> Analiser<'s> {
     /// Checks if a URL should be scanned, based on the
     /// `math_str` and `ignore_str` of the args
     fn should_scan_url(&self, url: &str) -> bool {
-        if url.contains(&self.match_str) {
-            for ignore in &self.ignore_strs {
-                if url.contains(ignore) {
-                    return false;
-                }
-            }
+        if !url.contains(&self.match_str) {
+            return false;
+        }
+
+        // @todo: If ignore_strs are none, for default it's value
+        // it's ['']. That's just a validation step, that will be 
+        // moved to main.rs in the future.
+        if self.ignore_strs.len() == 1 && self.ignore_strs[0] == "" {
             return true;
+        }
+
+        for ignore in &self.ignore_strs {
+            if url.contains(ignore) {
+                return false;
+            }
         }
 
         true
