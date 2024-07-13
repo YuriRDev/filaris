@@ -1,39 +1,49 @@
 mod graph;
 mod urldata;
 use std::collections::VecDeque;
+use std::fmt::format;
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::Duration;
+use std::{option, thread};
+use tokio::task;
 
 use colored::Colorize;
 use graph::Graph;
-use regex::Regex;
+use regex::{NoExpand, Regex};
 use reqwest::StatusCode;
 use urldata::{normalize_url, validate_url, UrlData};
 
 #[derive(Debug)]
-pub enum VerboseLevel {
-    None = 0,           // Only print the start and end of program
-    SuccessAtempts = 1, // Only prints the success atempts
-    AllAtempts = 2,     // Prints all the atempts of reaching a URL
+pub struct Analiser {
+    graph: Arc<Mutex<Graph>>,
+    queue: Arc<Mutex<VecDeque<UrlQueue>>>,
 }
 
-impl VerboseLevel {
-    pub fn from_u8(value: u8) -> VerboseLevel {
-        match value {
-            0 => VerboseLevel::None,
-            1 => VerboseLevel::SuccessAtempts,
-            _ => VerboseLevel::AllAtempts,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Analiser<'s> {
-    graph: Graph,
-    queue: VecDeque<UrlQueue>,
+#[derive(Debug, Clone)]
+pub struct Options {
     max_depth: usize,
     max_urls: usize,
     match_str: String,
-    verbose: VerboseLevel,
-    ignore_strs: Vec<&'s str>,
+    ignore_strs: Vec<String>,
+    concurrency: usize
+}
+
+impl Options {
+    pub fn new(
+        max_depth: usize,
+        max_urls: usize,
+        match_str: String,
+        ignore_strs: Vec<String>,
+        concurrency: usize
+    ) -> Options {
+        Options {
+            max_depth,
+            max_urls,
+            match_str,
+            ignore_strs,
+            concurrency
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -43,168 +53,137 @@ struct UrlQueue {
     parent: String,
 }
 
-impl<'s> Analiser<'s> {
-    pub fn new(
-        url: &str,
-        match_str: &str,
-        max_depth: usize,
-        max_urls: usize,
-        verbose: VerboseLevel,
-        ignore_strs: Vec<&'s str>,
-    ) -> Analiser<'s> {
+impl Analiser {
+    pub fn new(url: &str) -> Analiser {
         Analiser {
-            graph: Graph::new(),
-            queue: VecDeque::from([UrlQueue {
+            graph: Arc::new(Mutex::new(Graph::new())),
+            queue: Arc::new(Mutex::new(VecDeque::from([UrlQueue {
                 depth: 0,
                 url: url.to_string(),
-                parent: String::from(""),
-            }]),
-            match_str: match_str.to_string(),
-            max_depth,
-            max_urls,
-            verbose,
-            ignore_strs,
+                parent: "".to_string(),
+            }]))),
         }
     }
 
-    fn add_to_queue(&mut self, url: &str, depth: usize, parent: String) {
-        self.queue.push_back(UrlQueue {
-            depth,
-            url: url.to_string(),
-            parent,
-        })
-    }
+    pub async fn start(&mut self, options: Options) {
+        let mut handles = vec![];
 
-    /// Checks if a URL was already scanned and added on the Graph Url's list.
-    fn already_scanned(&self, url: &str) -> bool {
-        for scanned_urls in &self.graph.urls {
-            if normalize_url(scanned_urls.url.clone()) == normalize_url(url.to_string()) {
-                return true;
-            }
-        }
-        false
-    }
+        for i in 0..options.concurrency {
+            let options = Arc::new(options.clone());
+            let queue = Arc::clone(&self.queue);
+            let handle = task::spawn(async move {
+                loop {
+                    let url = {
+                        let mut queue_lock = queue.lock().unwrap();
+                        queue_lock.pop_front()
+                    };
 
-    /// Checks if a URL is already in queue.
-    fn in_queue(&self, url: &str) -> bool {
-        for queue_urls in &self.queue {
-            if normalize_url(queue_urls.url.clone()) == normalize_url(url.to_string()) {
-                return true;
-            }
-        }
-        false
-    }
 
-    /// Log a new valid URL "connection", that is,
-    /// based on the VerboseLevel, prints the URL connection in the format:
-    ///
-    /// ```[length] parent -> children```
-    fn log_new_url(&self, urls_len: usize, parent: &str, url: &str) {
-        match self.verbose {
-            VerboseLevel::None => {}
-            _ => {
-                let formated_number = match urls_len {
-                    0_usize..=9_usize => format!("  {}", urls_len),
-                    10_usize..=99_usize => format!(" {}", urls_len),
-                    _ => format!("{}", urls_len),
-                };
-
-                println!(
-                    "{} {} {} {}",
-                    format!("[URLs: {}]", formated_number).green(),
-                    parent.italic().bright_black(),
-                    "———>".green(),
-                    url.underline()
-                );
-            }
-        }
-    }
-
-    /// Log a invalid URL discovery, based on the VerboseLevel,
-    /// prints the URL in the format:
-    ///
-    /// ```[Invalid] url```
-    fn log_invalid_url(&self, url: &str) {
-        if let VerboseLevel::AllAtempts = self.verbose {
-            println!("{} {}", "[Invalid  ]".red(), url.italic().bright_black())
-        }
-    }
-
-    /// Checks if a URL should be scanned, based on the
-    /// `math_str` and `ignore_str` of the args
-    fn should_scan_url(&self, url: &str) -> bool {
-        if !url.contains(&self.match_str) {
-            return false;
-        }
-
-        // @todo: If ignore_strs are none, for default it's value
-        // it's ['']. That's just a validation step, that will be 
-        // moved to main.rs in the future.
-        if self.ignore_strs.len() == 1 && self.ignore_strs[0] == "" {
-            return true;
-        }
-
-        for ignore in &self.ignore_strs {
-            if url.contains(ignore) {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    fn extract_urls_from_content(&self, content: &str, parent_url: &str) -> Vec<String> {
-        // @TODO: If content is HTML parse
-        // @TODO: If content is JS parse
-
-        let re = Regex::new(r#"[\"'`](.*?)[\"'`]"#).unwrap();
-        let mut substrings: Vec<String> = Vec::new();
-
-        for cap in re.captures_iter(content) {
-            if let Some(url) = validate_url(&cap[1], parent_url) {
-                if self.should_scan_url(&url) {
-                    substrings.push(url.to_string());
-                }
-            }
-        }
-
-        substrings
-    }
-
-    pub async fn start(&mut self) {
-        while let Some(url) = self.queue.pop_front() {
-            if url.depth > self.max_depth {
-                return;
-            }
-
-            match get_page_content(&url.url).await {
-                None => self.log_invalid_url(&url.url),
-                Some(content) => {
-                    if self.graph.size() >= self.max_urls {
-                        return;
-                    }
-
-                    let founded_urls = self.extract_urls_from_content(&content, &url.url);
-
-                    self.log_new_url(founded_urls.len(), &url.parent, &url.url);
-                    self.graph
-                        .add(UrlData::new(url.url.to_string()), &url.parent);
-
-                    for new_url in founded_urls {
-                        if self.graph.size() >= self.max_urls {
-                            return;
+                    match url {
+                        Some(url) => {
+                            match process_url(&url, &options, i).await {
+                                None => {
+                                    // println!("Thread [{i}]: Invalid UR");
+                                }
+                                Some(content) => {
+                                    log_new_url(content.len(), &url.parent, &url.url, i);
+                                    let mut queue_lock = queue.lock().unwrap();
+                                    for new_url in content.into_iter().rev() {
+                                        queue_lock.push_back(UrlQueue {
+                                            depth: &url.depth + 1,
+                                            parent: String::from(&url.url),
+                                            url: new_url,
+                                        })
+                                    }
+                                }
+                            }
                         }
+                        None => tokio::time::sleep(Duration::from_millis(100)).await,
+                    }
+                }
+            });
 
-                        if self.already_scanned(&new_url) {
-                            self.graph.add(UrlData::new(new_url.to_string()), &url.url);
-                        } else if !self.in_queue(&new_url) {
-                            self.add_to_queue(&new_url, url.depth + 1, url.url.to_string());
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.await.unwrap()
+        }
+    }
+}
+
+/// Log a new valid URL "connection", that is,
+/// prints the URL connection in the format:
+///
+/// ```[length] parent -> children```
+fn log_new_url(urls_len: usize, parent: &str, url: &str, thread_id: usize) {
+    let formated_number = match urls_len {
+        0_usize..=9_usize => format!("  {}", urls_len),
+        10_usize..=99_usize => format!(" {}", urls_len),
+        _ => format!("{}", urls_len),
+    };
+
+    println!(
+        "{} {} {} {} {}",
+        thread_id,
+        format!("[URLs: {}]", formated_number).green(),
+        parent.italic().bright_black(),
+        "———>".green(),
+        url.underline()
+    );
+}
+
+/// PRINTS:
+///  * InvalidUrl log.
+///  * Successfull URL log
+///
+async fn process_url(
+    url: &UrlQueue,
+    options: &Arc<Options>,
+    thread_id: usize,
+) -> Option<Vec<String>> {
+    match get_page_content(&url.url).await {
+        None => {
+            // println!("Thread [{thread_id}]: Invalid website - Invalid HTTP status code");
+            return None;
+        }
+        Some(content) => {
+            let urls = extract_urls_from_content(&content, &url.url);
+            let mut to_scan: Vec<String> = Vec::new();
+            'outer: for scan in urls {
+                if !scan.contains(&options.match_str) {
+                    continue;
+                }
+                if options.ignore_strs.len() > 0 {
+                    for ignore in options.ignore_strs.clone() {
+                        if scan.contains(&ignore) {
+                            continue 'outer;
                         }
                     }
                 }
+                to_scan.push(scan);
             }
+            Some(to_scan)
         }
     }
+}
+
+/// Based on regex for now...
+/// TODO: Write more in docs
+fn extract_urls_from_content(content: &str, parent_url: &str) -> Vec<String> {
+    // @TODO: If content is HTML parse
+    // @TODO: If content is JS parse
+
+    let re = Regex::new(r#"[\"'`](.*?)[\"'`]"#).unwrap();
+    let mut substrings: Vec<String> = Vec::new();
+
+    for cap in re.captures_iter(content) {
+        if let Some(url) = validate_url(&cap[1], parent_url) {
+            substrings.push(url.to_string());
+        }
+    }
+
+    substrings
 }
 
 /// Requests for the page content, and return's it if the status code
