@@ -1,5 +1,5 @@
 use clap::Parser;
-use scrapper::{Analiser, Options, VerboseLevel};
+use scrapper::{Analiser, Options};
 use url::Url;
 
 /// A web scraper tool to explore and trace pathways within websites.
@@ -14,10 +14,6 @@ struct Args {
     #[arg(short, long, default_value_t = 3)]
     depth: usize,
 
-    /// Sets the verbosity level for logging URL relations. 0 disables logging, 1 logs only successful attempts, and 2 logs all attempts.
-    #[arg(short, long, default_value_t = 1, value_parser = validate_verbose)]
-    verbose: u8,
-
     /// Specifies the maximum number of URL relations to discover.
     #[arg(long, default_value_t = 1000)]
     max_urls: usize,
@@ -29,6 +25,10 @@ struct Args {
     /// A comma-separated list of strings. URLs containing any of these strings will be ignored. Default is an empty string, meaning no URLs are ignored.
     #[arg(short, long, default_value_t = String::from(""))]
     ignore: String,
+    
+    /// Number of tasks that will be spawned. 
+    #[arg(short, long, default_value_t = 5)]
+    concurrency: usize,
 }
 
 fn validate_initial_url(url: &str) -> Result<String, String> {
@@ -38,14 +38,6 @@ fn validate_initial_url(url: &str) -> Result<String, String> {
             url
         )
     })
-}
-
-fn validate_verbose(s: &str) -> Result<u8, String> {
-    match s.parse::<u8>() {
-        Ok(val) if val <= 2 => Ok(val),
-        Ok(_) => Err(String::from("Verbose must be between 0 and 2")),
-        Err(_) => Err(String::from("Verbose must be a number")),
-    }
 }
 
 #[tokio::main]
@@ -62,8 +54,8 @@ async fn main() {
         args.depth,
         args.max_urls,
         args.match_str,
-        VerboseLevel::from_u8(args.verbose),
         ignore_str,
+        args.concurrency
     );
 
     let mut analiser = Analiser::new(&args.url);

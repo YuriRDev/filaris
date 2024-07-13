@@ -13,23 +13,6 @@ use regex::{NoExpand, Regex};
 use reqwest::StatusCode;
 use urldata::{normalize_url, validate_url, UrlData};
 
-#[derive(Debug, Clone)]
-pub enum VerboseLevel {
-    None = 0,           // Only print the start and end of program
-    SuccessAtempts = 1, // Only prints the success atempts
-    AllAtempts = 2,     // Prints all the atempts of reaching a URL
-}
-
-impl VerboseLevel {
-    pub fn from_u8(value: u8) -> VerboseLevel {
-        match value {
-            0 => VerboseLevel::None,
-            1 => VerboseLevel::SuccessAtempts,
-            _ => VerboseLevel::AllAtempts,
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct Analiser {
     graph: Arc<Mutex<Graph>>,
@@ -41,8 +24,8 @@ pub struct Options {
     max_depth: usize,
     max_urls: usize,
     match_str: String,
-    verbose: VerboseLevel,
     ignore_strs: Vec<String>,
+    concurrency: usize
 }
 
 impl Options {
@@ -50,15 +33,15 @@ impl Options {
         max_depth: usize,
         max_urls: usize,
         match_str: String,
-        verbose: VerboseLevel,
         ignore_strs: Vec<String>,
+        concurrency: usize
     ) -> Options {
         Options {
             max_depth,
             max_urls,
             match_str,
-            verbose,
             ignore_strs,
+            concurrency
         }
     }
 }
@@ -83,11 +66,9 @@ impl Analiser {
     }
 
     pub async fn start(&mut self, options: Options) {
-        let concurrency_level = 4;
-
         let mut handles = vec![];
 
-        for i in 0..concurrency_level {
+        for i in 0..options.concurrency {
             let options = Arc::new(options.clone());
             let queue = Arc::clone(&self.queue);
             let handle = task::spawn(async move {
@@ -96,6 +77,7 @@ impl Analiser {
                         let mut queue_lock = queue.lock().unwrap();
                         queue_lock.pop_front()
                     };
+
 
                     match url {
                         Some(url) => {
@@ -106,8 +88,8 @@ impl Analiser {
                                 Some(content) => {
                                     log_new_url(content.len(), &url.parent, &url.url, i);
                                     let mut queue_lock = queue.lock().unwrap();
-                                    for new_url in content {
-                                        queue_lock.push_front(UrlQueue {
+                                    for new_url in content.into_iter().rev() {
+                                        queue_lock.push_back(UrlQueue {
                                             depth: &url.depth + 1,
                                             parent: String::from(&url.url),
                                             url: new_url,
@@ -115,7 +97,6 @@ impl Analiser {
                                     }
                                 }
                             }
-                            // println!("Thread [{i}]: Completed!");
                         }
                         None => tokio::time::sleep(Duration::from_millis(100)).await,
                     }
@@ -132,7 +113,7 @@ impl Analiser {
 }
 
 /// Log a new valid URL "connection", that is,
-/// based on the VerboseLevel, prints the URL connection in the format:
+/// prints the URL connection in the format:
 ///
 /// ```[length] parent -> children```
 fn log_new_url(urls_len: usize, parent: &str, url: &str, thread_id: usize) {
@@ -163,21 +144,20 @@ async fn process_url(
 ) -> Option<Vec<String>> {
     match get_page_content(&url.url).await {
         None => {
-            // PRINT_INVALID
             // println!("Thread [{thread_id}]: Invalid website - Invalid HTTP status code");
             return None;
         }
         Some(content) => {
             let urls = extract_urls_from_content(&content, &url.url);
             let mut to_scan: Vec<String> = Vec::new();
-            for scan in urls {
+            'outer: for scan in urls {
                 if !scan.contains(&options.match_str) {
                     continue;
                 }
                 if options.ignore_strs.len() > 0 {
                     for ignore in options.ignore_strs.clone() {
                         if scan.contains(&ignore) {
-                            continue;
+                            continue 'outer;
                         }
                     }
                 }
