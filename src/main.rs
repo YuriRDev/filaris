@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use scrapper::{Analiser, Options};
 use url::Url;
 
@@ -11,8 +11,9 @@ struct Args {
     url: String,
 
     /// Defines how deep the BFS should go.
-    #[arg(short, long, default_value_t = 3)]
-    depth: usize,
+    // DISABLED - Waiting for priorityQueue.
+    // #[arg(short, long, default_value_t = 3)]
+    // depth: usize,
 
     /// Specifies the maximum number of URL relations to discover.
     #[arg(long, default_value_t = 1000)]
@@ -23,10 +24,10 @@ struct Args {
     match_str: String,
 
     /// A comma-separated list of strings. URLs containing any of these strings will be ignored. Default is an empty string, meaning no URLs are ignored.
-    #[arg(short, long, default_value_t = String::from(""))]
-    ignore: String,
-    
-    /// Number of tasks that will be spawned. 
+    #[arg(short, long, action = ArgAction::Append, default_values_t = default_ignore_arg())]
+    ignore: Vec<String>,
+
+    /// Number of tasks that will be spawned.
     #[arg(short, long, default_value_t = 5)]
     concurrency: usize,
 }
@@ -40,23 +41,15 @@ fn validate_initial_url(url: &str) -> Result<String, String> {
     })
 }
 
+fn default_ignore_arg() -> Vec<String> {
+    Vec::new()
+}
+
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
 
-    let ignore_str: Vec<String> = args
-        .ignore
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .collect();
-
-    let options = Options::new(
-        args.depth,
-        args.max_urls,
-        args.match_str,
-        ignore_str,
-        args.concurrency
-    );
+    let options = Options::new(args.max_urls, args.match_str, args.ignore, args.concurrency);
 
     let mut analiser = Analiser::new(&args.url);
     analiser.start(options).await;
