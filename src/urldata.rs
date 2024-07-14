@@ -27,7 +27,7 @@ impl UrlData {
 /// **A valid URL includes the http/https protocol in it**
 ///
 /// This method won't including the initial `www.` prefix of the website.
-pub fn normalize_url(url: String) -> String {
+pub fn normalize_url(url: &str) -> String {
     let parsed_url = Url::parse(&url).unwrap();
     let host = parsed_url.host_str().unwrap().replace("www.", "");
     let path = parsed_url.path();
@@ -228,11 +228,11 @@ mod normalize_url {
         let sites = ["site.com", "othersite.com", "moreonesite.com"];
         for site in sites {
             assert_eq!(
-                normalize_url(format!("https://{site}")),
+                normalize_url(&format!("https://{site}")),
                 format!("{}/", site.to_string())
             );
             assert_eq!(
-                normalize_url(format!("https://www.{site}")),
+                normalize_url(&format!("https://www.{site}")),
                 format!("{}/", site.to_string())
             );
         }
@@ -243,11 +243,11 @@ mod normalize_url {
         let sites = ["site.com", "othersite.com", "moreonesite.com"];
         for site in sites {
             assert_eq!(
-                normalize_url(format!("https://{site}/#div_to")),
+                normalize_url(&format!("https://{site}/#div_to")),
                 format!("{}/", site.to_string())
             );
             assert_eq!(
-                normalize_url(format!("https://www.{site}?q=20")),
+                normalize_url(&format!("https://www.{site}?q=20")),
                 format!("{}/", site.to_string())
             );
         }
@@ -263,11 +263,11 @@ mod normalize_url {
         let sites = ["site.com/", "othersite.com/", "moreonesite.com/"];
         for site in sites {
             assert_eq!(
-                normalize_url(format!("http://{site}/////mypath////lastpath///")),
+                normalize_url(&format!("http://{site}/////mypath////lastpath///")),
                 format!("{site}/////mypath////lastpath///")
             );
             assert_eq!(
-                normalize_url(format!("http://{site}/mypath/lastpath")),
+                normalize_url(&format!("http://{site}/mypath/lastpath")),
                 format!("{site}/mypath/lastpath")
             );
         }

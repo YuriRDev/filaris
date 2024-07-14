@@ -15,7 +15,7 @@ use urldata::{normalize_url, validate_url, UrlData};
 pub struct Analiser {
     /// Number of already scanned urls. It's used for the
     /// break-point at `max_urls`
-    scanned: Arc<Mutex<usize>>,
+    scanned: Arc<Mutex<Vec<String>>>,
     queue: Arc<Mutex<VecDeque<UrlQueue>>>,
 }
 
@@ -53,7 +53,7 @@ struct UrlQueue {
 impl Analiser {
     pub fn new(url: &str) -> Analiser {
         Analiser {
-            scanned: Arc::new(Mutex::new(0)),
+            scanned: Arc::new(Mutex::new(Vec::new())),
             queue: Arc::new(Mutex::new(VecDeque::from([UrlQueue {
                 depth: 0,
                 url: url.to_string(),
@@ -77,32 +77,32 @@ impl Analiser {
                     };
 
                     match url {
+                        None => tokio::time::sleep(Duration::from_millis(100)).await,
                         Some(url) => {
-                            match process_url(&url, &options).await {
-                                None => {}
-                                Some(content) => {
-                                    // @todo: Add a new breaking-point based of depth.
-                                    // Thread breaking-point.
-                                    {
-                                        let mut scanned_lock = scanned.lock().unwrap();
-                                        *scanned_lock += 1;
-                                        if *scanned_lock > options.max_urls {
-                                            break 'main;
-                                        }
+                            if let Some(content) = process_url(&url, &options).await {
+                                // @todo: Add a new breaking-point based of depth.
+                                // Thread breaking-point.
+                                {
+                                    let mut scanned_lock = scanned.lock().unwrap();
+                                    scanned_lock.push(normalize_url(&url.url));
+                                    if scanned_lock.len() > options.max_urls {
+                                        break 'main;
                                     }
-                                    log_new_url(content.len(), &url.parent, &url.url);
-                                    let mut queue_lock = queue.lock().unwrap();
-                                    for new_url in content.into_iter().rev() {
-                                        queue_lock.push_back(UrlQueue {
-                                            depth: &url.depth + 1,
-                                            parent: String::from(&url.url),
-                                            url: new_url,
-                                        })
+                                }
+                                log_new_url(content.len(), &url.parent, &url.url);
+                                let mut queue_lock = queue.lock().unwrap();
+                                for new_url in content.into_iter().rev() {
+                                    if queue_lock.iter().any(|uq| uq.url == new_url) {
+                                        continue;
                                     }
+                                    queue_lock.push_back(UrlQueue {
+                                        depth: &url.depth + 1,
+                                        parent: String::from(&url.url),
+                                        url: new_url,
+                                    })
                                 }
                             }
                         }
-                        None => tokio::time::sleep(Duration::from_millis(100)).await,
                     }
                 }
             });
@@ -132,7 +132,7 @@ fn log_new_url(urls_len: usize, parent: &str, url: &str) {
         format!("[URLs: {}]", formated_number).green(),
         parent.italic().bright_black(),
         "———>".green(),
-        url.underline()
+        url
     );
 }
 
@@ -141,9 +141,7 @@ fn log_new_url(urls_len: usize, parent: &str, url: &str) {
 /// and `--ignore`
 async fn process_url(url: &UrlQueue, options: &Arc<Options>) -> Option<Vec<String>> {
     match get_page_content(&url.url).await {
-        None => {
-            return None;
-        }
+        None => None,
         Some(content) => {
             let urls = extract_urls_from_content(&content, &url.url);
             let mut to_scan: Vec<String> = Vec::new();
