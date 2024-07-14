@@ -62,6 +62,7 @@ Go to the project directory
 ## :compass: Roadmap
 Here, are some known bugs and WIP, all the items here should be resolved in a few days. 
 
-* [ ] Don't add to queue items that are already in queue or have been scanned - That causes loops.
+* [ ] Don't add to queue items that are already have been scanned - That causes loops.
+* [x] Don't add to queue items that are already in queue - That causes loops.
 * [ ] Usage of Priority Queue instead of a simple Queue.
 * [ ] Bring back `--depth` arg
