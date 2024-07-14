@@ -11,8 +11,9 @@ struct Args {
     url: String,
 
     /// Defines how deep the BFS should go.
-    #[arg(short, long, default_value_t = 3)]
-    depth: usize,
+    // DISABLED - Waiting for priorityQueue. 
+    // #[arg(short, long, default_value_t = 3)]
+    // depth: usize,
 
     /// Specifies the maximum number of URL relations to discover.
     #[arg(long, default_value_t = 1000)]
