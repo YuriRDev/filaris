@@ -2,12 +2,10 @@
 
 `filaris` is a fast multithreaded tool for exploring and trace pathways within any website.
 
-<!--
-Haha, Todo! Need a image here :)
 <div> 
-  <img src="https://placehold.co/600x400?text=Your+Screenshot+here" alt="screenshot" />
+  <img src="https://github.com/user-attachments/assets/41a64a98-8994-459d-8955-4ba27b3b662f" alt="screenshot" />
 </div>
--->
+
 
 <!-- Getting Started -->
 ## 	:toolbox: Getting Started
