@@ -21,7 +21,6 @@ pub struct Analiser {
 
 #[derive(Debug, Clone)]
 pub struct Options {
-    max_depth: usize,
     max_urls: usize,
     match_str: String,
     ignore_strs: Vec<String>,
@@ -30,14 +29,12 @@ pub struct Options {
 
 impl Options {
     pub fn new(
-        max_depth: usize,
         max_urls: usize,
         match_str: String,
         ignore_strs: Vec<String>,
         concurrency: usize,
     ) -> Options {
         Options {
-            max_depth,
             max_urls,
             match_str,
             ignore_strs,
@@ -82,8 +79,7 @@ impl Analiser {
                     match url {
                         Some(url) => {
                             match process_url(&url, &options).await {
-                                None => {
-                                }
+                                None => {}
                                 Some(content) => {
                                     // @todo: Add a new breaking-point based of depth.
                                     // Thread breaking-point.
@@ -141,12 +137,9 @@ fn log_new_url(urls_len: usize, parent: &str, url: &str) {
 }
 
 /// Receives a URL and Options, it filters all the
-/// inner urls based on the Options, such as `--match-str` 
+/// inner urls based on the Options, such as `--match-str`
 /// and `--ignore`
-async fn process_url(
-    url: &UrlQueue,
-    options: &Arc<Options>,
-) -> Option<Vec<String>> {
+async fn process_url(url: &UrlQueue, options: &Arc<Options>) -> Option<Vec<String>> {
     match get_page_content(&url.url).await {
         None => {
             return None;
@@ -158,11 +151,9 @@ async fn process_url(
                 if !scan.contains(&options.match_str) {
                     continue;
                 }
-                if options.ignore_strs.len() > 0 {
-                    for ignore in options.ignore_strs.clone() {
-                        if scan.contains(&ignore) {
-                            continue 'outer;
-                        }
+                for ignore in options.ignore_strs.clone() {
+                    if scan.contains(&ignore) {
+                        continue 'outer;
                     }
                 }
                 to_scan.push(scan);
